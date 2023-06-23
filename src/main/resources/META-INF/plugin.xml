@@ -18,6 +18,9 @@
 
     For now set the environment variable GITHUB_TOKEN to your GitHub Personal Access Token.
     The plugin will use that to access your gists. The plugin will not work without the token.
+
+    It treats any trailing words starting with # in Gist descriptions like
+    'Gist description #category1 #category2' as categories and groups Gists by them.
   ]]></description>
 
     <!-- Product and plugin compatibility requirements.
