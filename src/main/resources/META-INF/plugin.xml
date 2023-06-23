@@ -1,0 +1,43 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <!-- Unique identifier of the plugin. It should be FQN. It cannot be changed between the plugin versions. -->
+    <id>sandipchitale.gistdoit</id>
+
+    <!-- Public plugin name should be written in Title Case.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
+    <name>Gist Do It</name>
+
+    <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
+    <vendor email="sandipchitale@gmail.com" url="https://github.com/sandipchitale">Sandip Chitale</vendor>
+
+    <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
+         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
+         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+    <description><![CDATA[
+    Manage (for now view) your gists from inside IntelliJ IDE.
+
+    For now set the environment variable GITHUB_TOKEN to your GitHub Personal Access Token.
+    The plugin will use that to access your gists. The plugin will not work without the token.
+  ]]></description>
+
+    <!-- Product and plugin compatibility requirements.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+    <depends>com.intellij.modules.platform</depends>
+
+    <!-- Extension points defined by the plugin.
+         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow
+                factoryClass="sandipchitale.gistdoit.GistDoItToolWindowFactory"
+                id="Gist Do It"
+                anchor="bottom"
+                icon="sandipchitale.gistdoit.GistDoItIcons.ToolWindow"
+                secondary="true"
+        />
+        <notificationGroup
+                id="gistDoItNotificationGroup"
+                toolWindowId="Gist Do It"
+                displayType="BALLOON"
+        />
+    </extensions>
+</idea-plugin>
