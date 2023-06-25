@@ -23,7 +23,6 @@ import org.kohsuke.github.GitHubBuilder;
 
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.DefaultTreeCellRenderer;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.DefaultTreeSelectionModel;
 import java.awt.*;
@@ -138,10 +137,6 @@ public class GistDoItToolWindow {
                 }
                 DefaultMutableTreeNode categoryNode = new DefaultMutableTreeNode(category);
                 for (GHGist gist : gistSet) {
-                    String description = gist.getDescription();
-                    if (description.contains(" #")) {
-                        description = description.substring(0, description.indexOf(" #")).trim();
-                    }
                     DefaultMutableTreeNode gistNode = new DefaultMutableTreeNode(gist);
                     categoryNode.add(gistNode);
                     gist.getFiles().forEach((name, file) -> {
