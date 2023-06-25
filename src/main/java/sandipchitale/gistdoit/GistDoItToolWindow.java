@@ -1,5 +1,6 @@
 package sandipchitale.gistdoit;
 
+import com.intellij.icons.AllIcons;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
@@ -11,6 +12,7 @@ import com.intellij.openapi.fileTypes.PlainTextLanguage;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
 import com.intellij.testFramework.LightVirtualFile;
+import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.treeStructure.Tree;
 import org.apache.commons.io.IOUtils;
@@ -30,17 +32,25 @@ import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
 
+import static javax.swing.JOptionPane.NO_OPTION;
+import static javax.swing.JOptionPane.QUESTION_MESSAGE;
+
 public class GistDoItToolWindow {
     private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
 
     private final JPanel contentToolWindow;
+
     private final GistsTreeModel gistsTreeModel;
 
-    private static class GistTreeCellRenderer extends DefaultTreeCellRenderer {
+    private static class GistTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
-        public Component getTreeCellRendererComponent(JTree tree, Object value, boolean sel, boolean expanded,
+        public void customizeCellRenderer(JTree tree, Object value, boolean sel, boolean expanded,
                                                       boolean leaf, int row, boolean hasFocus) {
-            Component component = super.getTreeCellRendererComponent(tree, value, sel, expanded, leaf, row, hasFocus);
+            if (expanded) {
+                setIcon(AllIcons.Nodes.Folder);
+            } else {
+                setIcon(AllIcons.Nodes.Folder);
+            }
             if (value instanceof DefaultMutableTreeNode) {
                 DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
                 Object userObject = node.getUserObject();
@@ -49,7 +59,8 @@ public class GistDoItToolWindow {
                     if (text.startsWith("#")) {
                         text = text.substring(1);
                     }
-                    setText(text);
+                    append(text);
+                    setIcon(AllIcons.Actions.GroupBy);
                 } else if (userObject instanceof GHGist) {
                     GHGist gist = (GHGist) userObject;
                     Date updatedAt = null;
@@ -58,11 +69,16 @@ public class GistDoItToolWindow {
                     } catch (IOException e) {
                         throw new RuntimeException(e);
                     }
-                    setText(gist.getDescription() + (updatedAt == null ? "" : " [ Updated on: " + updatedAt + " ]"));
+                    String description = gist.getDescription();
+                    if (description.contains("#")) {
+                        description = description.substring(0, description.indexOf("#")).trim();
+                    }
+                    append(description + (updatedAt == null ? "" : " [ Updated on: " + updatedAt + " ]"));
+                    setIcon(AllIcons.Actions.ListFiles);
                 } else if (userObject instanceof GHGistFile) {
                     GHGistFile gistFile = (GHGistFile) userObject;
                     String gistFileName = gistFile.getFileName();
-                    setText(gistFile.getFileName());
+                    append(gistFile.getFileName());
                     FileType fileType = null;
                     if (gistFileName.contains(".")) {
                         String extension = gistFileName.substring(gistFileName.lastIndexOf(".") + 1);
@@ -75,7 +91,6 @@ public class GistDoItToolWindow {
                     }
                 }
             }
-            return component;
         }
     }
 
@@ -150,6 +165,7 @@ public class GistDoItToolWindow {
 
         Tree tree = new Tree(gistsTreeModel);
 
+        GistTreeCellRenderer gistTreeCellRenderer = new GistTreeCellRenderer();
         tree.setCellRenderer(new GistTreeCellRenderer());
 
         tree.setRootVisible(true);
@@ -179,7 +195,7 @@ public class GistDoItToolWindow {
                                     fileType = PlainTextFileType.INSTANCE;
                                 }
                                 LightVirtualFile lightVirtualFile = new LightVirtualFile(gistFileName, fileType, content);
-//                                lightVirtualFile.setWritable(false);
+                                lightVirtualFile.setWritable(false);
                                 // Figure out a way to set language for syntax highlighting based on file extension
                                 lightVirtualFile.setLanguage(PlainTextLanguage.INSTANCE);
                                 FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
@@ -191,10 +207,27 @@ public class GistDoItToolWindow {
                         }
                     });
                 }
-
             }
         });
         this.contentToolWindow.add(new JBScrollPane(tree), BorderLayout.CENTER);
+
+        JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
+        toolBar.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 2));
+
+        JButton refreshButton = new JButton(AllIcons.Actions.Refresh);
+        refreshButton.setToolTipText("Reload gists");
+        refreshButton.addActionListener(e -> {
+            loadGists(project, tree, gistsTreeModel);
+        });
+
+        toolBar.add(refreshButton);
+
+        this.contentToolWindow.add(toolBar, BorderLayout.NORTH);
+
+        loadGists(project, tree, gistsTreeModel);
+    }
+
+    private static void loadGists(Project project, Tree tree, GistsTreeModel gistsTreeModel) {
         tree.setPaintBusy(true);
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             ApplicationManager.getApplication().runReadAction(() -> {
@@ -206,7 +239,24 @@ public class GistDoItToolWindow {
                                 String.format("Set Github access token as system property %s or environment variable %s", GITHUB_TOKEN, GITHUB_TOKEN),
                                 NotificationType.ERROR);
                         notification.notify(project);
-                        return;
+                        JPanel panel = new JPanel();
+                        JLabel label = new JLabel("Enter a GITHUB_TOKEN:");
+                        JPasswordField githubTokenPasswordField = new JPasswordField(10);
+                        panel.add(label);
+                        panel.add(githubTokenPasswordField);
+                        String[] options = new String[]{"OK", "Cancel"};
+                        int option = JOptionPane.showOptionDialog(null,
+                                                                    panel,
+                                                                    "Enter GITHUB_TOKEN",
+                                                                    NO_OPTION,
+                                                                    QUESTION_MESSAGE,
+                                                                    null, options, options[1]);
+                        if (option == 0) {
+                            char[] password = githubTokenPasswordField.getPassword();
+                            githubToken = new String(password);
+                        } else {
+                            return;
+                        }
                     }
                     GitHub github = new GitHubBuilder().withOAuthToken(githubToken).build();
                     Set<GHGist> gists = github.getMyself().listGists().toSet();
