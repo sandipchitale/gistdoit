@@ -33,6 +33,7 @@
 </ul>
 <h2>Bug Fixes</h2>
 <ul>
+  <li>Fix icon size.</li>
   <li>Fix tree cell background.</li>
   <li>Use icons</li>
 </ul>
