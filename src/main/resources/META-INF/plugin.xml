@@ -4,15 +4,15 @@
     <id>sandipchitale.gistdoit</id>
 
     <!-- Public plugin name should be written in Title Case.
-         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
+        Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-name -->
     <name>Gist Do It</name>
 
     <!-- A displayed Vendor name or Organization ID displayed on the Plugins Page. -->
     <vendor email="sandipchitale@gmail.com" url="https://github.com/sandipchitale">Sandip Chitale</vendor>
 
     <!-- Description of the plugin displayed on the Plugin Page and IDE Plugin Manager.
-         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
-         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
+        Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
+        Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
     Manage (for now view) your gists from inside IntelliJ IDE.
 
@@ -21,26 +21,28 @@
 
     It treats any trailing words starting with # in Gist descriptions like
     'Gist description #category1 #category2' as categories and groups Gists by them.
-  ]]></description>
+]]></description>
 
     <!-- Product and plugin compatibility requirements.
-         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
+        Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
 
     <change-notes><![CDATA[
 <h2>New Features</h2>
+    <li>Support connect, disconnect and refresh gists action.</li>
+    <li>Wait cursor.</li>
 <ul>
 </ul>
 <h2>Bug Fixes</h2>
 <ul>
-  <li>Fix icon size.</li>
-  <li>Fix tree cell background.</li>
-  <li>Use icons</li>
+    <li>Fix icon size.</li>
+    <li>Fix tree cell background.</li>
+    <li>Use icons</li>
 </ul>
 ]]></change-notes>
 
     <!-- Extension points defined by the plugin.
-         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
+        Read more: https://plugins.jetbrains.com/docs/intellij/plugin-extension-points.html -->
     <extensions defaultExtensionNs="com.intellij">
         <toolWindow
                 factoryClass="sandipchitale.gistdoit.GistDoItToolWindowFactory"

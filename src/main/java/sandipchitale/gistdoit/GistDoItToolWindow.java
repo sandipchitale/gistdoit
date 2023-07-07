@@ -27,6 +27,7 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.DefaultTreeSelectionModel;
 import java.awt.*;
 import java.io.IOException;
+import java.lang.reflect.InvocationTargetException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -37,14 +38,20 @@ import static javax.swing.JOptionPane.QUESTION_MESSAGE;
 public class GistDoItToolWindow {
     private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
 
+    private static GitHub github;
+
     private final JPanel contentToolWindow;
 
     private final GistsTreeModel gistsTreeModel;
+    private final JLabel loadingGistsLabel;
+    private final JButton connectToGithubButton;
+    private final JButton disconnectFromGithubButton;
+    private final JButton refreshGistsButton;
 
     private static class GistTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
         public void customizeCellRenderer(JTree tree, Object value, boolean sel, boolean expanded,
-                                                      boolean leaf, int row, boolean hasFocus) {
+                                          boolean leaf, int row, boolean hasFocus) {
             if (expanded) {
                 setIcon(AllIcons.Nodes.Folder);
             } else {
@@ -101,50 +108,54 @@ public class GistDoItToolWindow {
         }
 
         public void setGists(Set<GHGist> gists) {
-            this.gists = gists;
             DefaultMutableTreeNode root = (DefaultMutableTreeNode) getRoot();
-            root.removeAllChildren();
-            Map<String, Set<GHGist>> gistsMap = new TreeMap<>();
-            for (GHGist gist : gists) {
-                String gistDescription = gist.getDescription();
-                if (gistDescription.contains(" #")) {
-                    // Categorized
-                    String[] gistDescriptionParts = gistDescription.split("\\s+");
-//                    gistDescription = gistDescription.substring(0, gistDescription.indexOf(" #")).trim();
-                    for (int i = gistDescriptionParts.length - 1; i >= 0; i--) {
-                        String gistDescriptionPart = gistDescriptionParts[i];
-                        if (gistDescriptionPart.startsWith("#") && gistDescriptionPart.length() > 1) {
-                            gistDescriptionPart = gistDescriptionPart.substring(1); // remove # from category name
-                            Set<GHGist> gistSet = gistsMap.computeIfAbsent(gistDescriptionPart, k -> new LinkedHashSet<>());
-                            gistSet.add(gist);
-                            gistsMap.put(gistDescriptionPart, gistSet);
-                        } else {
-                            break;
+            try {
+                root.removeAllChildren();
+                this.gists = gists;
+                Map<String, Set<GHGist>> gistsMap = new TreeMap<>();
+                for (GHGist gist : gists) {
+                    String gistDescription = gist.getDescription();
+                    if (gistDescription.contains(" #")) {
+                        // Categorized
+                        String[] gistDescriptionParts = gistDescription.split("\\s+");
+    //                    gistDescription = gistDescription.substring(0, gistDescription.indexOf(" #")).trim();
+                        for (int i = gistDescriptionParts.length - 1; i >= 0; i--) {
+                            String gistDescriptionPart = gistDescriptionParts[i];
+                            if (gistDescriptionPart.startsWith("#") && gistDescriptionPart.length() > 1) {
+                                gistDescriptionPart = gistDescriptionPart.substring(1); // remove # from category name
+                                Set<GHGist> gistSet = gistsMap.computeIfAbsent(gistDescriptionPart, k -> new LinkedHashSet<>());
+                                gistSet.add(gist);
+                                gistsMap.put(gistDescriptionPart, gistSet);
+                            } else {
+                                break;
+                            }
                         }
+                    } else {
+                        // Uncategorized
+                        Set<GHGist> gistSet = gistsMap.computeIfAbsent("", k -> new LinkedHashSet<>());
+                        gistSet.add(gist);
+                        gistsMap.put("", gistSet);
                     }
-                } else {
-                    // Uncategorized
-                    Set<GHGist> gistSet = gistsMap.computeIfAbsent("", k -> new LinkedHashSet<>());
-                    gistSet.add(gist);
-                    gistsMap.put("", gistSet);
-                }
 
-            }
-            for (String category: gistsMap.keySet()) {
-                Set<GHGist> gistSet = gistsMap.get(category);
-                if (gistSet.size() == 0) {
-                    continue;
                 }
-                DefaultMutableTreeNode categoryNode = new DefaultMutableTreeNode(category);
-                for (GHGist gist : gistSet) {
-                    DefaultMutableTreeNode gistNode = new DefaultMutableTreeNode(gist);
-                    categoryNode.add(gistNode);
-                    gist.getFiles().forEach((name, file) -> {
-                        DefaultMutableTreeNode fileNode = new DefaultMutableTreeNode(file);
-                        gistNode.add(fileNode);
-                    });
+                for (String category: gistsMap.keySet()) {
+                    Set<GHGist> gistSet = gistsMap.get(category);
+                    if (gistSet.size() == 0) {
+                        continue;
+                    }
+                    DefaultMutableTreeNode categoryNode = new DefaultMutableTreeNode(category);
+                    for (GHGist gist : gistSet) {
+                        DefaultMutableTreeNode gistNode = new DefaultMutableTreeNode(gist);
+                        categoryNode.add(gistNode);
+                        gist.getFiles().forEach((name, file) -> {
+                            DefaultMutableTreeNode fileNode = new DefaultMutableTreeNode(file);
+                            gistNode.add(fileNode);
+                        });
+                    }
+                    root.add(categoryNode);
                 }
-                root.add(categoryNode);
+            } finally   {
+                reload(root);
             }
         }
 
@@ -209,59 +220,126 @@ public class GistDoItToolWindow {
         JPanel toolBar = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         toolBar.setBorder(BorderFactory.createEmptyBorder(2, 0, 2, 2));
 
-        JButton refreshButton = new JButton(AllIcons.Actions.Refresh);
-        refreshButton.setToolTipText("Reload gists");
-        refreshButton.addActionListener(e -> {
-            loadGists(project, tree, gistsTreeModel);
-        });
+        loadingGistsLabel = new JLabel("Loading gists...");
+        toolBar.add(loadingGistsLabel);
+        loadingGistsLabel.setVisible(false);
 
-        toolBar.add(refreshButton);
+        connectToGithubButton = new JButton(AllIcons.Vcs.Vendors.Github);
+        connectToGithubButton.setToolTipText("Connect to Github...");
+        connectToGithubButton.addActionListener(e -> {
+            try {
+                JPanel panel = new JPanel();
+                JLabel label = new JLabel("Enter a GITHUB_TOKEN:");
+                JPasswordField githubTokenPasswordField = new JPasswordField(42);
+                panel.add(label);
+                panel.add(githubTokenPasswordField);
+                String[] options = new String[]{"OK", "Cancel"};
+                int option = JOptionPane.showOptionDialog(
+                    contentToolWindow.getTopLevelAncestor(),
+                    panel,
+                    "Enter GITHUB_TOKEN",
+                    NO_OPTION,
+                    QUESTION_MESSAGE,
+                    null, options, options[1]);
+                if (option == 0) {
+                    GitHub gitHub = ensureGithubConnection(new String(githubTokenPasswordField.getPassword()));
+                    if (gitHub != null) {
+                        loadGists(github, project, tree);
+                    }
+                }
+            } finally {
+                adjustStates();
+            }
+        });
+        toolBar.add(connectToGithubButton);
+
+        refreshGistsButton = new JButton(AllIcons.Actions.Refresh);
+        refreshGistsButton.setToolTipText("Reload Gists");
+        refreshGistsButton.addActionListener(e -> {
+            loadGists(github, project, tree);
+        });
+        toolBar.add(refreshGistsButton);
+
+        disconnectFromGithubButton = new JButton(AllIcons.Actions.Close);
+        disconnectFromGithubButton.setToolTipText("Disconnect from Github");
+        disconnectFromGithubButton.addActionListener(e -> {
+            github = null;
+            gistsTreeModel.setGists(Collections.emptySet());
+            adjustStates();
+        });
+        toolBar.add(disconnectFromGithubButton);
 
         this.contentToolWindow.add(toolBar, BorderLayout.NORTH);
 
-        loadGists(project, tree, gistsTreeModel);
+        adjustStates();
+        String githubToken = System.getProperty(GITHUB_TOKEN, System.getenv(GITHUB_TOKEN));
+        if (githubToken == null) {
+            Notification notification = new Notification("gistDoItNotificationGroup",
+                "Github token not set",
+                String.format("Set Github access token as system property %s or environment variable %s", GITHUB_TOKEN, GITHUB_TOKEN),
+                NotificationType.ERROR);
+            notification.notify(project);
+            return;
+        }
+
+        // Try loading Gists - assume specified Github token is good
+        loadGists(ensureGithubConnection(githubToken), project, tree);
     }
 
-    private static void loadGists(Project project, Tree tree, GistsTreeModel gistsTreeModel) {
+    private void adjustStates() {
+        connectToGithubButton.setVisible(github == null);
+        refreshGistsButton.setVisible(github != null);
+        disconnectFromGithubButton.setVisible(github != null);
+    }
+
+    private GitHub ensureGithubConnection(String githubToken) {
+        try {
+            if (github == null) {
+                try {
+                    github = new GitHubBuilder().withOAuthToken(githubToken).build();
+
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+            return github;
+        } finally {
+            adjustStates();
+        }
+    }
+
+    private void loadGists(GitHub github, Project project, Tree tree) {
+        if (github == null) {
+            Notification notification = new Notification("gistDoItNotificationGroup",
+                "Not connected to Github",
+                "Please connect to github first.",
+                NotificationType.ERROR);
+            notification.notify(project);
+            return;
+        }
         tree.setPaintBusy(true);
+        loadingGistsLabel.setVisible(true);
+        contentToolWindow.setCursor(Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR));
         ApplicationManager.getApplication().executeOnPooledThread(() -> {
             ApplicationManager.getApplication().runReadAction(() -> {
                 try {
-                    String githubToken = System.getProperty(GITHUB_TOKEN, System.getenv(GITHUB_TOKEN));
-                    if (githubToken == null) {
-                        Notification notification = new Notification("gistDoItNotificationGroup",
-                                "Github token not set",
-                                String.format("Set Github access token as system property %s or environment variable %s", GITHUB_TOKEN, GITHUB_TOKEN),
-                                NotificationType.ERROR);
-                        notification.notify(project);
-                        JPanel panel = new JPanel();
-                        JLabel label = new JLabel("Enter a GITHUB_TOKEN:");
-                        JPasswordField githubTokenPasswordField = new JPasswordField(10);
-                        panel.add(label);
-                        panel.add(githubTokenPasswordField);
-                        String[] options = new String[]{"OK", "Cancel"};
-                        int option = JOptionPane.showOptionDialog(null,
-                                                                    panel,
-                                                                    "Enter GITHUB_TOKEN",
-                                                                    NO_OPTION,
-                                                                    QUESTION_MESSAGE,
-                                                                    null, options, options[1]);
-                        if (option == 0) {
-                            char[] password = githubTokenPasswordField.getPassword();
-                            githubToken = new String(password);
-                        } else {
-                            return;
-                        }
+                    try {
+                        // Clear
+                        SwingUtilities.invokeAndWait(() -> {
+                            ((GistsTreeModel) tree.getModel()).setGists(Collections.emptySet());
+                        });
+                    } catch (InvocationTargetException | InterruptedException ignore) {
                     }
-                    GitHub github = new GitHubBuilder().withOAuthToken(githubToken).build();
                     Set<GHGist> gists = github.getMyself().listGists().toSet();
                     SwingUtilities.invokeLater(() -> {
-                        gistsTreeModel.setGists(gists);
+                        ((GistsTreeModel) tree.getModel()).setGists(gists);
                     });
                 } catch (IOException e) {
                     throw new RuntimeException(e);
                 } finally {
+                    contentToolWindow.setCursor(null);
                     tree.setPaintBusy(false);
+                    loadingGistsLabel.setVisible(false);
                 }
             });
         });
