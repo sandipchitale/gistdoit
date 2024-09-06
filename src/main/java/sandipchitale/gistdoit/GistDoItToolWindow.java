@@ -1,9 +1,12 @@
 package sandipchitale.gistdoit;
 
 import com.intellij.icons.AllIcons;
+import com.intellij.lang.Language;
+import com.intellij.lang.LanguageUtil;
 import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.application.ApplicationManager;
+import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
@@ -180,11 +183,9 @@ public class GistDoItToolWindow {
 
         tree.addTreeSelectionListener(tse -> {
             Object lastPathComponent = tse.getPath().getLastPathComponent();
-            if (lastPathComponent instanceof DefaultMutableTreeNode) {
-                DefaultMutableTreeNode defaultMutableTreeNode = (DefaultMutableTreeNode) lastPathComponent;
+            if (lastPathComponent instanceof DefaultMutableTreeNode defaultMutableTreeNode) {
                 Object userObject = defaultMutableTreeNode.getUserObject();
-                if (userObject instanceof GHGistFile) {
-                    GHGistFile gistFile = ((GHGistFile) userObject);
+                if (userObject instanceof GHGistFile gistFile) {
                     String gistFileName = gistFile.getFileName();
                     String gistFileRawUrl = gistFile.getRawUrl();
                     ApplicationManager.getApplication().executeOnPooledThread(() -> {
@@ -203,8 +204,14 @@ public class GistDoItToolWindow {
                                 LightVirtualFile lightVirtualFile = new LightVirtualFile(gistFileName, fileType, content);
                                 lightVirtualFile.setWritable(false);
                                 // Figure out a way to set language for syntax highlighting based on file extension
-                                lightVirtualFile.setLanguage(PlainTextLanguage.INSTANCE);
-                                FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
+                                // Set language for syntax highlighting based on file type
+                                Language language = LanguageUtil.getFileLanguage(lightVirtualFile);
+                                if (language != null) {
+                                    lightVirtualFile.setLanguage(language);
+                                } else {
+                                    lightVirtualFile.setLanguage(PlainTextLanguage.INSTANCE);
+                                }
+                                FileEditor[] fileEditors = FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
                             });
                         } catch (IOException e) {
                             throw new RuntimeException(e);

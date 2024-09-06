@@ -29,9 +29,13 @@
 
     <change-notes><![CDATA[
 <h2>New Features</h2>
+<ul>
+    <li>Show syntax coloring in Gist files based on the extension.</li>
+</ul>
+<h2>Features</h2>
+<ul>
     <li>Support connect, disconnect and refresh gists action.</li>
     <li>Wait cursor.</li>
-<ul>
 </ul>
 <h2>Bug Fixes</h2>
 <ul>
