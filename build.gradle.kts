@@ -5,14 +5,14 @@ plugins {
 }
 
 group = "sandipchitale"
-version = "1.0.0"
+version = "1.0.1"
 
 repositories {
     mavenCentral()
 }
 
 dependencies {
-    implementation("org.kohsuke:github-api:1.315")
+    implementation("org.kohsuke:github-api:1.326")
 }
 
 // Configure Gradle IntelliJ Plugin
