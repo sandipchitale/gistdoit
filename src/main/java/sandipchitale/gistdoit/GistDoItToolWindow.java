@@ -37,6 +37,8 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -212,7 +214,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                     ApplicationManager.getApplication().executeOnPooledThread(() -> {
                         gistsTree.setPaintBusy(true);
                         try {
-                            String content = IOUtils.toString(new URL(gistFileRawUrl), StandardCharsets.UTF_8);
+                            String content = IOUtils.toString(new URI(gistFileRawUrl).toURL(), StandardCharsets.UTF_8);
                             ApplicationManager.getApplication().invokeLater(() -> {
                                 FileType fileType = null;
                                 if (gistFileName.contains(".")) {
@@ -234,7 +236,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                                 }
                                 FileEditor[] fileEditors = FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
                             });
-                        } catch (IOException e) {
+                        } catch (IOException | URISyntaxException e) {
                             throw new RuntimeException(e);
                         } finally {
                             gistsTree.setPaintBusy(false);
