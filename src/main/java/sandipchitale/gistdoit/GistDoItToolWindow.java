@@ -18,7 +18,9 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.components.JBScrollPane;
 import com.intellij.ui.treeStructure.Tree;
+import com.intellij.util.ui.components.BorderLayoutPanel;
 import org.apache.commons.io.IOUtils;
+import org.jetbrains.annotations.NotNull;
 import org.kohsuke.github.GHGist;
 import org.kohsuke.github.GHGistFile;
 import org.kohsuke.github.GitHub;
@@ -38,7 +40,7 @@ import java.util.*;
 import static javax.swing.JOptionPane.NO_OPTION;
 import static javax.swing.JOptionPane.QUESTION_MESSAGE;
 
-public class GistDoItToolWindow {
+public class GistDoItToolWindow extends SimpleToolWindowPanel {
     private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
 
     private static GitHub github;
@@ -50,28 +52,31 @@ public class GistDoItToolWindow {
     private final JButton connectToGithubButton;
     private final JButton disconnectFromGithubButton;
     private final JButton refreshGistsButton;
+    private final Project project;
 
     private static class GistTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
-        public void customizeCellRenderer(JTree tree, Object value, boolean sel, boolean expanded,
-                                          boolean leaf, int row, boolean hasFocus) {
+        public void customizeCellRenderer(@NotNull JTree tree,
+                                          Object value,
+                                          boolean sel,
+                                          boolean expanded,
+                                          boolean leaf,
+                                          int row,
+                                          boolean hasFocus) {
             if (expanded) {
                 setIcon(AllIcons.Nodes.Folder);
             } else {
                 setIcon(AllIcons.Nodes.Folder);
             }
-            if (value instanceof DefaultMutableTreeNode) {
-                DefaultMutableTreeNode node = (DefaultMutableTreeNode) value;
+            if (value instanceof DefaultMutableTreeNode node) {
                 Object userObject = node.getUserObject();
-                if (node.getUserObject() instanceof String) {
-                    String text = (String) node.getUserObject();
+                if (node.getUserObject() instanceof String text) {
                     if (text.startsWith("#")) {
                         text = text.substring(1);
                     }
                     append(text);
                     setIcon(AllIcons.Actions.GroupBy);
-                } else if (userObject instanceof GHGist) {
-                    GHGist gist = (GHGist) userObject;
+                } else if (userObject instanceof GHGist gist) {
                     Date updatedAt = null;
                     try {
                         updatedAt = gist.getUpdatedAt();
@@ -84,8 +89,7 @@ public class GistDoItToolWindow {
                     }
                     append(description + (updatedAt == null ? "" : " [ Updated on: " + updatedAt + " ]"));
                     setIcon(AllIcons.Actions.ListFiles);
-                } else if (userObject instanceof GHGistFile) {
-                    GHGistFile gistFile = (GHGistFile) userObject;
+                } else if (userObject instanceof GHGistFile gistFile) {
                     String gistFileName = gistFile.getFileName();
                     append(gistFile.getFileName());
                     FileType fileType = null;
@@ -143,7 +147,7 @@ public class GistDoItToolWindow {
                 }
                 for (String category: gistsMap.keySet()) {
                     Set<GHGist> gistSet = gistsMap.get(category);
-                    if (gistSet.size() == 0) {
+                    if (gistSet.isEmpty()) {
                         continue;
                     }
                     DefaultMutableTreeNode categoryNode = new DefaultMutableTreeNode(category);
@@ -168,7 +172,10 @@ public class GistDoItToolWindow {
     }
 
     public GistDoItToolWindow(Project project) {
-        this.contentToolWindow = new SimpleToolWindowPanel(true, true);
+        super(true, true);
+        this.project = project;
+        this.contentToolWindow = new BorderLayoutPanel();
+        setContent(contentToolWindow);
 
         gistsTreeModel = new GistsTreeModel();
 
@@ -350,9 +357,5 @@ public class GistDoItToolWindow {
                 }
             });
         });
-    }
-
-    public JComponent getContent() {
-        return this.contentToolWindow;
     }
 }

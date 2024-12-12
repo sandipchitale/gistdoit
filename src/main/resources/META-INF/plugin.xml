@@ -51,7 +51,7 @@
         <toolWindow
                 factoryClass="sandipchitale.gistdoit.GistDoItToolWindowFactory"
                 id="Gist Do It"
-                anchor="bottom"
+                anchor="right"
                 icon="AllIcons.Vcs.Vendors.Github"
                 secondary="true"
         />
