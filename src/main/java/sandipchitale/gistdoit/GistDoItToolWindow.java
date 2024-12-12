@@ -296,7 +296,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
             return;
         }
 
-        // Try loading Gists - assume specified Github token is good
+        // Try loading Gists - assume specified GitHub token is good
         loadGists(ensureGithubConnection(githubToken), project, tree);
     }
 
