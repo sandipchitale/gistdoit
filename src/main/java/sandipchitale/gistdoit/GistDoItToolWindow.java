@@ -7,7 +7,6 @@ import com.intellij.notification.Notification;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.application.ApplicationManager;
-import com.intellij.openapi.fileEditor.FileEditor;
 import com.intellij.openapi.fileEditor.FileEditorManager;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
@@ -63,11 +62,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                                           boolean leaf,
                                           int row,
                                           boolean hasFocus) {
-            if (expanded) {
-                setIcon(AllIcons.Nodes.Folder);
-            } else {
-                setIcon(AllIcons.Nodes.Folder);
-            }
+            setIcon(AllIcons.Nodes.Folder);
             if (value instanceof DefaultMutableTreeNode node) {
                 Object userObject = node.getUserObject();
                 if (node.getUserObject() instanceof String text) {
@@ -75,9 +70,13 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                         text = text.substring(1);
                     }
                     append(text);
-                    setIcon(AllIcons.Actions.GroupBy);
+                    if (node.isRoot()) {
+                        setIcon(AllIcons.Vcs.Vendors.Github);
+                    } else {
+                        setIcon(AllIcons.Actions.GroupByFile);
+                    }
                 } else if (userObject instanceof GHGist gist) {
-                    Date updatedAt = null;
+                    Date updatedAt;
                     try {
                         updatedAt = gist.getUpdatedAt();
                     } catch (IOException e) {
@@ -195,8 +194,6 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
 
         Objects.requireNonNull(gistDoItToolWindowEx).setTitleActions(java.util.List.of(connectToGithubAction, refreshGistsAction, disconnectFromGithubAction));
 
-
-        GistTreeCellRenderer gistTreeCellRenderer = new GistTreeCellRenderer();
         gistsTree.setCellRenderer(new GistTreeCellRenderer());
 
         gistsTree.setRootVisible(true);
@@ -228,12 +225,8 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                                 // Figure out a way to set language for syntax highlighting based on file extension
                                 // Set language for syntax highlighting based on file type
                                 Language language = LanguageUtil.getFileLanguage(lightVirtualFile);
-                                if (language != null) {
-                                    lightVirtualFile.setLanguage(language);
-                                } else {
-                                    lightVirtualFile.setLanguage(PlainTextLanguage.INSTANCE);
-                                }
-                                FileEditor[] fileEditors = FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
+                                lightVirtualFile.setLanguage(Objects.requireNonNullElse(language, PlainTextLanguage.INSTANCE));
+                                FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
                             });
                         } catch (IOException | URISyntaxException e) {
                             throw new RuntimeException(e);
