@@ -30,10 +30,12 @@
     <change-notes><![CDATA[
 <h2>New Features</h2>
 <ul>
-    <li>Show syntax coloring in Gist files based on the extension.</li>
+    <li>Moved actions to Toolwindow title bar.</li>
+    <li>Notification while loading Gists.</li>
 </ul>
 <h2>Features</h2>
 <ul>
+    <li>Show syntax coloring in Gist files based on the extension.</li>
     <li>Support connect, disconnect and refresh gists action.</li>
     <li>Wait cursor.</li>
 </ul>
@@ -61,4 +63,21 @@
                 displayType="BALLOON"
         />
     </extensions>
+    <actions>
+        <action id="ConnectToGithub"
+                class="sandipchitale.gistdoit.ConnectToGithubAction"
+                description="Connect to Github..."
+                icon="AllIcons.Vcs.Vendors.Github">
+        </action>
+        <action id="RefreshGists"
+                class="sandipchitale.gistdoit.RefreshGistsAction"
+                description="Disconnect from Github"
+                icon="AllIcons.Actions.Refresh">
+        </action>
+        <action id="DisconnectFromGithub"
+                class="sandipchitale.gistdoit.DisconnectFromGithubAction"
+                description="Disconnect from Github"
+                icon="AllIcons.Actions.Exit">
+        </action>
+    </actions>
 </idea-plugin>
