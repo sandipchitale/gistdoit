@@ -30,6 +30,7 @@
     <change-notes><![CDATA[
 <h2>New Features</h2>
 <ul>
+    <li>Speed search. Just start typing search string. Use up and down arrow keys to go to previous and next match. ESCAPE to cancel search.</li>
     <li>Moved actions to Toolwindow title bar.</li>
     <li>Notification while loading Gists.</li>
 </ul>

@@ -19,6 +19,7 @@ import com.intellij.openapi.wm.ex.ToolWindowEx;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.ScrollPaneFactory;
+import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.ui.treeStructure.Tree;
 import org.apache.commons.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
@@ -178,6 +179,9 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         gistsTree = new Tree(gistsTreeModel);
 
         setContent(ScrollPaneFactory.createScrollPane(gistsTree));
+
+        TreeSpeedSearch gistSearch = new TreeSpeedSearch(gistsTree);
+        gistSearch.setCanExpand(true);
 
         final ActionManager actionManager = ActionManager.getInstance();
 
