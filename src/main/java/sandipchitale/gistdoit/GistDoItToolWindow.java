@@ -73,7 +73,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                     if (node.isRoot()) {
                         setIcon(AllIcons.Vcs.Vendors.Github);
                     } else {
-                        setIcon(AllIcons.Actions.GroupByFile);
+                        setIcon(AllIcons.General.GearPlain);
                     }
                 } else if (userObject instanceof GHGist gist) {
                     Date updatedAt;
@@ -87,7 +87,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                         description = description.substring(0, description.indexOf("#")).trim();
                     }
                     append(description + (updatedAt == null ? "" : " [ Updated on: " + updatedAt + " ]"));
-                    setIcon(AllIcons.Actions.ListFiles);
+                    setIcon(AllIcons.Nodes.Tag);
                 } else if (userObject instanceof GHGistFile gistFile) {
                     String gistFileName = gistFile.getFileName();
                     append(gistFile.getFileName());
