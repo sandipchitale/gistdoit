@@ -19,15 +19,11 @@ import com.intellij.openapi.wm.ex.ToolWindowEx;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.ScrollPaneFactory;
-import com.intellij.ui.TreeSpeedSearch;
 import com.intellij.ui.TreeUIHelper;
 import com.intellij.ui.treeStructure.Tree;
 import org.apache.commons.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
-import org.kohsuke.github.GHGist;
-import org.kohsuke.github.GHGistFile;
-import org.kohsuke.github.GitHub;
-import org.kohsuke.github.GitHubBuilder;
+import org.kohsuke.github.*;
 
 import javax.swing.Timer;
 import javax.swing.*;
@@ -51,12 +47,13 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
     private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
 
     private static GitHub github;
+    private static GHUser githubUser;
 
     private final GistsTreeModel gistsTreeModel;
     private final Project project;
     private final Tree gistsTree;
 
-    private static class GistTreeCellRenderer extends ColoredTreeCellRenderer {
+    private class GistTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
         public void customizeCellRenderer(@NotNull JTree tree,
                                           Object value,
@@ -74,6 +71,13 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                     }
                     append(text);
                     if (node.isRoot()) {
+                        if (isConnected()) {
+                            try {
+                                // Show gist owner info
+                                append(String.format("Gists by %s ( %s )", githubUser.getName(), githubUser.getLogin()));
+                            } catch (IOException ignore) {
+                            }
+                        }
                         setIcon(AllIcons.Vcs.Vendors.Github);
                     } else {
                         setIcon(AllIcons.General.GearPlain);
@@ -90,7 +94,8 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                         description = description.substring(0, description.indexOf("#")).trim();
                     }
                     append(description + (updatedAt == null ? "" : " [ Updated on: " + updatedAt + " ]"));
-                    setIcon(AllIcons.Nodes.Tag);
+                    append(gist.isPublic() ? " [ Public ]" : " [ Private]");
+                    setIcon(gist.isPublic() ? AllIcons.Nodes.C_public: AllIcons.Nodes.C_private);
                 } else if (userObject instanceof GHGistFile gistFile) {
                     String gistFileName = gistFile.getFileName();
                     append(gistFile.getFileName());
@@ -113,7 +118,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         private Set<GHGist> gists;
 
         public GistsTreeModel() {
-            super(new DefaultMutableTreeNode("Gists", true));
+            super(new DefaultMutableTreeNode("", true));
         }
 
         public void setGists(Set<GHGist> gists) {
@@ -193,13 +198,17 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         ConnectToGithubAction connectToGithubAction = (ConnectToGithubAction) actionManager.getAction("ConnectToGithub");
         connectToGithubAction.setGistDoItToolWindow(this);
 
+
+        GistsOfUser gistsOfUser = (GistsOfUser) actionManager.getAction("GistsOfUser");
+        gistsOfUser.setGistDoItToolWindow(this);
+
         RefreshGistsAction refreshGistsAction = (RefreshGistsAction) actionManager.getAction("RefreshGists");
         refreshGistsAction.setGistDoItToolWindow(this);
 
         DisconnectFromGithubAction disconnectFromGithubAction = (DisconnectFromGithubAction) actionManager.getAction("DisconnectFromGithub");
         disconnectFromGithubAction.setGistDoItToolWindow(this);
 
-        Objects.requireNonNull(gistDoItToolWindowEx).setTitleActions(java.util.List.of(connectToGithubAction, refreshGistsAction, disconnectFromGithubAction));
+        Objects.requireNonNull(gistDoItToolWindowEx).setTitleActions(java.util.List.of(connectToGithubAction, gistsOfUser, refreshGistsAction, disconnectFromGithubAction));
 
         gistsTree.setCellRenderer(new GistTreeCellRenderer());
 
@@ -274,7 +283,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         JPasswordField githubTokenPasswordField = new JPasswordField(42);
         panel.add(label);
         panel.add(githubTokenPasswordField);
-        String[] options = new String[]{"OK", "Cancel"};
+        String[] options = new String[]{"Connect", "Cancel"};
         int option = JOptionPane.showOptionDialog(
                 getTopLevelAncestor(),
                 panel,
@@ -296,6 +305,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         if (github == null) {
             try {
                 github = new GitHubBuilder().withOAuthToken(githubToken).build();
+                githubUser = github.getMyself();
 
             } catch (IOException e) {
                 throw new RuntimeException(e);
@@ -331,7 +341,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                         });
                     } catch (InvocationTargetException | InterruptedException ignore) {
                     }
-                    Set<GHGist> gists = github.getMyself().listGists().toSet();
+                    Set<GHGist> gists =githubUser.listGists().toSet();
                     SwingUtilities.invokeLater(() -> {
                         ((GistsTreeModel) gistsTree.getModel()).setGists(gists);
                     });
@@ -346,8 +356,47 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         });
     }
 
+    void loadGistsOfUser() {
+        JPanel panel = new JPanel();
+        JLabel label = new JLabel("Load gists of user ID:");
+        JTextField githubUserId = new JTextField(42);
+        githubUserId.setToolTipText("Blank indicates logged in user. Only public gists of other users are shown.");
+        panel.add(label);
+        panel.add(githubUserId);
+        String[] options = new String[]{"Load Gists", "Cancel"};
+        int option = JOptionPane.showOptionDialog(
+                getTopLevelAncestor(),
+                panel,
+                "Gists for GITHUB user",
+                DEFAULT_OPTION,
+                QUESTION_MESSAGE,
+                null,
+                options,
+                options[0]);
+        if (option == 0) {
+            if (isConnected()) {
+                try {
+                    GHUser user;
+                    String userId = githubUserId.getText().trim();
+                    if (userId.isEmpty()) {
+                        user = github.getMyself();;
+                    } else {
+                        user = github.getUser(userId);
+                    }
+                    githubUser = user;
+                    loadGists();
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+
+            }
+        }
+
+    }
+
     void disconnectFromGithub() {
         github = null;
+        githubUser = null;
         gistsTreeModel.setGists(Collections.emptySet());
     }
 }

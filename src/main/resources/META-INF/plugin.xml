@@ -30,6 +30,7 @@
     <change-notes><![CDATA[
 <h2>New Features</h2>
 <ul>
+    <li>Load public gists of any GitHub user.</li>
     <li>Speed search. Just start typing search string. Use up and down arrow keys to go to previous and next match. ESCAPE to cancel search.</li>
     <li>Moved actions to Toolwindow title bar.</li>
     <li>Notification while loading Gists.</li>
@@ -69,6 +70,11 @@
                 class="sandipchitale.gistdoit.ConnectToGithubAction"
                 description="Connect to Github..."
                 icon="AllIcons.Vcs.Vendors.Github">
+        </action>
+        <action id="GistsOfUser"
+                class="sandipchitale.gistdoit.GistsOfUser"
+                description="Load Gists of user"
+                icon="AllIcons.General.User">
         </action>
         <action id="RefreshGists"
                 class="sandipchitale.gistdoit.RefreshGistsAction"
