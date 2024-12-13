@@ -20,6 +20,7 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.TreeSpeedSearch;
+import com.intellij.ui.TreeUIHelper;
 import com.intellij.ui.treeStructure.Tree;
 import org.apache.commons.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
@@ -33,6 +34,7 @@ import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.DefaultTreeSelectionModel;
+import javax.swing.tree.TreePath;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.io.IOException;
@@ -180,8 +182,9 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
 
         setContent(ScrollPaneFactory.createScrollPane(gistsTree));
 
-        TreeSpeedSearch gistSearch = new TreeSpeedSearch(gistsTree);
-        gistSearch.setCanExpand(true);
+        TreeUIHelper.getInstance().installTreeSpeedSearch(gistsTree,
+                (TreePath o) -> { return o.getLastPathComponent().toString(); },
+                true);
 
         final ActionManager actionManager = ActionManager.getInstance();
 
