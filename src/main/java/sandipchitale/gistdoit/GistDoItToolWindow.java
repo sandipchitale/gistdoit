@@ -129,7 +129,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                 Map<String, Set<GHGist>> gistsMap = new TreeMap<>();
                 for (GHGist gist : gists) {
                     String gistDescription = gist.getDescription();
-                    if (gistDescription.contains(" #")) {
+                    if (gistDescription != null && gistDescription.contains(" #")) {
                         // Categorized
                         String[] gistDescriptionParts = gistDescription.split("\\s+");
                         //                    gistDescription = gistDescription.substring(0, gistDescription.indexOf(" #")).trim();
