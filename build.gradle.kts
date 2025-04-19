@@ -1,27 +1,30 @@
 plugins {
     id("java")
     id("org.jetbrains.kotlin.jvm") version "1.9.24"
-    id("org.jetbrains.intellij") version "1.17.3"
+    id("org.jetbrains.intellij.platform") version "2.5.0"
 }
 
 group = "sandipchitale"
-version = "1.0.12"
+version = "1.0.13"
 
 repositories {
     mavenCentral()
+
+    intellijPlatform {
+        defaultRepositories()
+    }
 }
 
 dependencies {
     implementation("org.kohsuke:github-api:1.326")
-}
 
-// Configure Gradle IntelliJ Plugin
-// Read more: https://plugins.jetbrains.com/docs/intellij/tools-gradle-intellij-plugin.html
-intellij {
-    version.set("2022.2.5")
-    type.set("IC") // Target IDE Platform
-
-    plugins.set(listOf())
+    intellijPlatform {
+        if (project.hasProperty("runIde_ideDir")) {
+            local("${project.extra["runIde_ideDir"]}")
+        } else {
+            intellijIdeaCommunity("2024.2")
+        }
+    }
 }
 
 tasks {
@@ -34,14 +37,8 @@ tasks {
         kotlinOptions.jvmTarget = "17"
     }
 
-    runIde {
-        if (project.hasProperty("runIde_ideDir")) {
-            ideDir = file("${project.extra["runIde_ideDir"]}")
-        }
-    }
-
     patchPluginXml {
-        sinceBuild.set("222")
+        sinceBuild.set("242")
         untilBuild.set("251.*")
     }
 
