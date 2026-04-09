@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "sandipchitale"
-version = "1.0.16"
+version = "1.0.17"
 
 repositories {
     mavenCentral()
@@ -27,19 +27,29 @@ dependencies {
     }
 }
 
+intellijPlatform {
+    buildSearchableOptions = false
+
+    pluginVerification {
+        ides {
+            recommended()
+        }
+    }
+}
+
 tasks {
     // Set the JVM compatibility versions
     withType<JavaCompile> {
-        sourceCompatibility = "17"
-        targetCompatibility = "17"
+        sourceCompatibility = "21"
+        targetCompatibility = "21"
     }
     withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "17"
+        kotlinOptions.jvmTarget = "21"
     }
 
     patchPluginXml {
         sinceBuild.set("242")
-        untilBuild.set("253.*")
+        untilBuild.set("261.*")
     }
 
     signPlugin {
