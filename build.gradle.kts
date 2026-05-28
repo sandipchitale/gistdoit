@@ -1,29 +1,20 @@
 plugins {
     id("java")
-    id("org.jetbrains.kotlin.jvm") version "1.9.24"
-    id("org.jetbrains.intellij.platform") version "2.5.0"
+    id("org.jetbrains.intellij.platform")
 }
 
 group = "sandipchitale"
-version = "1.0.17"
-
-repositories {
-    mavenCentral()
-
-    intellijPlatform {
-        defaultRepositories()
-    }
-}
+version = "1.0.19"
 
 dependencies {
-    implementation("org.kohsuke:github-api:1.326")
+    implementation("org.kohsuke:github-api:1.330")
 
     intellijPlatform {
-        if (project.hasProperty("runIde_ideDir")) {
-            local("${project.extra["runIde_ideDir"]}")
-        } else {
-            intellijIdeaCommunity("2024.2")
+        intellijIdeaUltimate("2026.1") {
+            useInstaller = false
+            useCache = true
         }
+        testFramework(org.jetbrains.intellij.platform.gradle.TestFrameworkType.Platform)
     }
 }
 
@@ -43,13 +34,9 @@ tasks {
         sourceCompatibility = "21"
         targetCompatibility = "21"
     }
-    withType<org.jetbrains.kotlin.gradle.tasks.KotlinCompile> {
-        kotlinOptions.jvmTarget = "21"
-    }
 
     patchPluginXml {
-        sinceBuild.set("242")
-        untilBuild.set("261.*")
+        sinceBuild.set("261")
     }
 
     signPlugin {
@@ -59,6 +46,6 @@ tasks {
     }
 
     publishPlugin {
-        token.set(System.getenv("PUBLISH_TOKEN"))
+        token.set(providers.gradleProperty("intellijPublishToken"))
     }
 }
