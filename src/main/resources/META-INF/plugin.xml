@@ -16,8 +16,11 @@
     <description><![CDATA[
     Manage (for now view) your gists from inside IntelliJ IDE.
 
-    For now set the environment variable GITHUB_TOKEN to your GitHub Personal Access Token.
-    The plugin will use that to access your gists. The plugin will not work without the token.
+    Uses the GitHub account you have already configured in the IDE under
+    Settings | Version Control | GitHub. If no account is configured, the IDE's own GitHub login
+    dialog (browser sign-in or personal access token) is shown, and the token is stored securely in
+    the IDE password safe. If the bundled GitHub plugin is disabled, the plugin falls back to
+    asking for a personal access token for the current session.
 
     It treats any trailing words starting with # in Gist descriptions like
     'Gist description #category1 #category2' as categories and groups Gists by them.
@@ -26,6 +29,15 @@
     <!-- Product and plugin compatibility requirements.
         Read more: https://plugins.jetbrains.com/docs/intellij/plugin-compatibility.html -->
     <depends>com.intellij.modules.platform</depends>
+    <!-- Optional: when the bundled GitHub plugin is present, take the token from the IDE's own
+         GitHub accounts instead of asking for one. -->
+    <depends optional="true" config-file="gistdoit-github.xml">org.jetbrains.plugins.github</depends>
+
+    <extensionPoints>
+        <extensionPoint name="githubTokenSource"
+                        interface="sandipchitale.gistdoit.GithubTokenSource"
+                        dynamic="true"/>
+    </extensionPoints>
 
     <change-notes><![CDATA[
 <h2>New Features</h2>

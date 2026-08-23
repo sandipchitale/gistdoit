@@ -1,0 +1,7 @@
+<!-- Loaded only when the bundled GitHub plugin (org.jetbrains.plugins.github) is present and
+     enabled. See the optional <depends> in plugin.xml. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="sandipchitale.gistdoit">
+        <githubTokenSource implementation="sandipchitale.gistdoit.IdeAccountsTokenSource"/>
+    </extensions>
+</idea-plugin>

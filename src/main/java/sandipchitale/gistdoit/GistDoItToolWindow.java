@@ -12,8 +12,11 @@ import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
 import com.intellij.openapi.fileTypes.PlainTextLanguage;
+import com.intellij.openapi.progress.ProgressIndicator;
+import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
+import com.intellij.openapi.util.Ref;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowEx;
 import com.intellij.testFramework.LightVirtualFile;
@@ -21,18 +24,17 @@ import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.TreeUIHelper;
 import com.intellij.ui.treeStructure.Tree;
+import com.intellij.util.containers.ContainerUtil;
 import org.apache.commons.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
 import org.kohsuke.github.*;
 
-import javax.swing.Timer;
 import javax.swing.*;
 import javax.swing.tree.DefaultMutableTreeNode;
 import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.DefaultTreeSelectionModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
-import java.awt.event.ActionEvent;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
@@ -44,7 +46,8 @@ import static javax.swing.JOptionPane.DEFAULT_OPTION;
 import static javax.swing.JOptionPane.QUESTION_MESSAGE;
 
 public class GistDoItToolWindow extends SimpleToolWindowPanel {
-    private static final String GITHUB_TOKEN = "GITHUB_TOKEN";
+    private static final String NOTIFICATION_GROUP = "gistDoItNotificationGroup";
+    private static final String GITHUB_COM_API_URL = "https://api.github.com";
 
     private static GitHub github;
     private static GHUser githubUser;
@@ -254,23 +257,9 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
             }
         });
 
-        String githubToken = System.getProperty(GITHUB_TOKEN, System.getenv(GITHUB_TOKEN));
-        if (githubToken == null) {
-            Notification notification = new Notification("gistDoItNotificationGroup",
-                    "Github token not set",
-                    String.format("Set Github access token as system property %s or environment variable %s", GITHUB_TOKEN, GITHUB_TOKEN),
-                    NotificationType.ERROR);
-            notification.notify(project);
-            return;
-        }
-
-        // Try loading Gists - assume specified GitHub token is good
-        Timer timer = new Timer(1000, (ActionEvent e) -> {
-            ensureGithubConnection(githubToken);
-            loadGists();
-        });
-        timer.setRepeats(false);
-        timer.start();
+        // Connect using the GitHub account already configured in the IDE, if there is one. Never
+        // pops a login dialog on its own - use the Connect to Github action for that.
+        connect(true);
     }
 
     boolean isConnected() {
@@ -278,52 +267,115 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
     }
 
     void connectToGithub() {
-        JPanel panel = new JPanel();
-        JLabel label = new JLabel("Enter a GITHUB_TOKEN:");
-        JPasswordField githubTokenPasswordField = new JPasswordField(42);
-        panel.add(label);
-        panel.add(githubTokenPasswordField);
-        String[] options = new String[]{"Connect", "Cancel"};
-        int option = JOptionPane.showOptionDialog(
-                getTopLevelAncestor(),
-                panel,
-                "Enter GITHUB_TOKEN",
-                DEFAULT_OPTION,
-                QUESTION_MESSAGE,
-                null,
-                options,
-                options[0]);
-        if (option == 0) {
-            GitHub gitHub = ensureGithubConnection(new String(githubTokenPasswordField.getPassword()));
-            if (gitHub != null) {
-                loadGists();
-            }
-        }
+        connect(false);
     }
 
-    private GitHub ensureGithubConnection(String githubToken) {
-        if (github == null) {
-            try {
-                github = new GitHubBuilder().withOAuthToken(githubToken).build();
-                githubUser = github.getMyself();
-
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
+    /**
+     * Resolves credentials on a pooled thread, connects and loads gists.
+     *
+     * @param auto when true this is the automatic attempt made as the tool window opens: connect
+     *             only if an account is already configured, never ask the user for anything
+     */
+    private void connect(boolean auto) {
+        if (isConnected()) {
+            loadGists();
+            return;
         }
-        return github;
+        GithubTokenSource tokenSource = ContainerUtil.getFirstItem(GithubTokenSource.EP_NAME.getExtensionList());
+        if (auto && (tokenSource == null || !tokenSource.hasConfiguredAccounts())) {
+            // Nothing to connect with yet, and opening a tool window must not pop a login dialog.
+            new Notification(NOTIFICATION_GROUP,
+                    "Not connected to GitHub",
+                    tokenSource == null
+                            ? "Use the Connect to Github action in the Gist Do It tool window to enter a GitHub token."
+                            : "Add a GitHub account in Settings | Version Control | GitHub, or use the Connect to Github action.",
+                    NotificationType.INFORMATION).notify(project);
+            return;
+        }
+        new Task.Backgroundable(project, "Connecting to GitHub", true) {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                GithubTokenSource.Credentials credentials = tokenSource == null
+                        ? promptForTokenManually()
+                        : tokenSource.resolve(project);
+                if (credentials == null) {
+                    // Cancelled by the user.
+                    return;
+                }
+                if (ensureGithubConnection(credentials)) {
+                    ApplicationManager.getApplication().invokeLater(GistDoItToolWindow.this::loadGists);
+                }
+            }
+        }.queue();
+    }
+
+    /**
+     * Fallback used when the bundled GitHub plugin is disabled, so the IDE's GitHub accounts are
+     * not available. The token is only kept for the current session.
+     */
+    private GithubTokenSource.Credentials promptForTokenManually() {
+        Ref<String> token = Ref.create();
+        ApplicationManager.getApplication().invokeAndWait(() -> {
+            JPanel panel = new JPanel();
+            JLabel label = new JLabel("Enter a GITHUB_TOKEN:");
+            JPasswordField githubTokenPasswordField = new JPasswordField(42);
+            panel.add(label);
+            panel.add(githubTokenPasswordField);
+            String[] options = new String[]{"Connect", "Cancel"};
+            int option = JOptionPane.showOptionDialog(
+                    getTopLevelAncestor(),
+                    panel,
+                    "Enter GITHUB_TOKEN",
+                    DEFAULT_OPTION,
+                    QUESTION_MESSAGE,
+                    null,
+                    options,
+                    options[0]);
+            if (option == 0) {
+                token.set(new String(githubTokenPasswordField.getPassword()));
+            }
+        });
+        String githubToken = token.get();
+        if (githubToken == null || githubToken.isBlank()) {
+            return null;
+        }
+        return new GithubTokenSource.Credentials(GITHUB_COM_API_URL, null, githubToken);
+    }
+
+    private boolean ensureGithubConnection(GithubTokenSource.Credentials credentials) {
+        if (github != null) {
+            return true;
+        }
+        try {
+            // Build into a local and only publish once getMyself() has validated the token, so a
+            // bad token cannot leave a non-null but unusable connection behind.
+            GitHub candidate = new GitHubBuilder()
+                    .withEndpoint(credentials.apiUrl())
+                    .withOAuthToken(credentials.token(), credentials.login())
+                    .build();
+            GHUser me = candidate.getMyself();
+            github = candidate;
+            githubUser = me;
+            return true;
+        } catch (IOException e) {
+            new Notification(NOTIFICATION_GROUP,
+                    "Could not connect to GitHub",
+                    "Could not connect to GitHub: " + e.getMessage(),
+                    NotificationType.ERROR).notify(project);
+            return false;
+        }
     }
 
     void loadGists() {
         if (github == null) {
-            Notification notification = new Notification("gistDoItNotificationGroup",
+            Notification notification = new Notification(NOTIFICATION_GROUP,
                     "Not connected to Github",
                     "Please connect to github first.",
                     NotificationType.ERROR);
             notification.notify(project);
             return;
         }
-        Notification loadingGistsNotification = new Notification("gistDoItNotificationGroup",
+        Notification loadingGistsNotification = new Notification(NOTIFICATION_GROUP,
                 "Loading gists....",
                 "Loading gists. This may take some time.",
                 NotificationType.INFORMATION);
@@ -360,7 +412,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         JPanel panel = new JPanel();
         JLabel label = new JLabel("Load gists of user ID:");
         JTextField githubUserId = new JTextField(42);
-        githubUserId.setToolTipText("Blank indicates logged in user. Only public gists of other users are shown.");
+        githubUserId.setToolTipText("Leave blank to load gists of logged in user. Only public gists of other users are shown.");
         panel.add(label);
         panel.add(githubUserId);
         String[] options = new String[]{"Load Gists", "Cancel"};
@@ -369,7 +421,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                 panel,
                 "Gists for GITHUB user",
                 DEFAULT_OPTION,
-                QUESTION_MESSAGE,
+                JOptionPane.PLAIN_MESSAGE,
                 null,
                 options,
                 options[0]);
