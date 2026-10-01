@@ -4,7 +4,7 @@ plugins {
 }
 
 group = "sandipchitale"
-version = "1.0.20"
+version = "1.0.21"
 
 dependencies {
     implementation("org.kohsuke:github-api:1.330")

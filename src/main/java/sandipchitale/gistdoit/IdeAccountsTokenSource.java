@@ -97,11 +97,15 @@ public final class IdeAccountsTokenSource implements GithubTokenSource {
         private AccountChooserDialog(@NotNull Project project, @NotNull List<GithubAccount> accounts) {
             super(project, false);
             comboBox = new ComboBox<>(new CollectionComboBoxModel<>(accounts, accounts.get(0)));
-            comboBox.setRenderer(SimpleListCellRenderer.create((label, account, index) -> {
-                if (account != null) {
-                    label.setText(account.getName() + " (" + account.getServer().toUrl() + ")");
+            comboBox.setRenderer(new SimpleListCellRenderer<>() {
+                @Override
+                public void customize(@NotNull JList<? extends GithubAccount> list, GithubAccount account,
+                                      int index, boolean selected, boolean hasFocus) {
+                    if (account != null) {
+                        setText(account.getName() + " (" + account.getServer().toUrl() + ")");
+                    }
                 }
-            }));
+            });
             setTitle("Gist Do It");
             init();
         }
