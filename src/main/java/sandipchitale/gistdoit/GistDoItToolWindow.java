@@ -23,8 +23,11 @@ import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.TreeUIHelper;
+import com.intellij.ui.components.JBLabel;
+import com.intellij.ui.speedSearch.SpeedSearchSupply;
 import com.intellij.ui.treeStructure.Tree;
 import com.intellij.util.containers.ContainerUtil;
+import com.intellij.util.ui.JBUI;
 import org.apache.commons.io.IOUtils;
 import org.jetbrains.annotations.NotNull;
 import org.kohsuke.github.*;
@@ -188,11 +191,28 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         gistsTreeModel = new GistsTreeModel();
         gistsTree = new Tree(gistsTreeModel);
 
-        setContent(ScrollPaneFactory.createScrollPane(gistsTree));
-
         TreeUIHelper.getInstance().installTreeSpeedSearch(gistsTree,
                 (TreePath o) -> { return o.getLastPathComponent().toString(); },
                 true);
+
+        // Hint shown only while the speed search popup is active, to make navigation discoverable
+        JBLabel speedSearchHint = new JBLabel("\u2191/\u2193 next/previous match \u00b7 Esc close");
+        speedSearchHint.setFont(JBUI.Fonts.label().asBold());
+        speedSearchHint.setBorder(JBUI.Borders.empty(4, 6));
+        speedSearchHint.setVisible(false);
+        SpeedSearchSupply speedSearchSupply = SpeedSearchSupply.getSupply(gistsTree, true);
+        if (speedSearchSupply != null) {
+            speedSearchSupply.addChangeListener(evt -> {
+                if (SpeedSearchSupply.ENTERED_PREFIX_PROPERTY_NAME.equals(evt.getPropertyName())) {
+                    speedSearchHint.setVisible(evt.getNewValue() != null);
+                }
+            });
+        }
+
+        JPanel treePanel = new JPanel(new BorderLayout());
+        treePanel.add(ScrollPaneFactory.createScrollPane(gistsTree), BorderLayout.CENTER);
+        treePanel.add(speedSearchHint, BorderLayout.SOUTH);
+        setContent(treePanel);
 
         final ActionManager actionManager = ActionManager.getInstance();
 
@@ -245,7 +265,10 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
                                 // Set language for syntax highlighting based on file type
                                 Language language = LanguageUtil.getFileLanguage(lightVirtualFile);
                                 lightVirtualFile.setLanguage(Objects.requireNonNullElse(language, PlainTextLanguage.INSTANCE));
-                                FileEditorManager.getInstance(project).openFile(lightVirtualFile, true);
+                                // Don't steal focus while speed searching, so the popup stays open for next/previous match
+                                SpeedSearchSupply speedSearch = SpeedSearchSupply.getSupply(gistsTree);
+                                boolean focusEditor = speedSearch == null || !speedSearch.isPopupActive();
+                                FileEditorManager.getInstance(project).openFile(lightVirtualFile, focusEditor);
                             });
                         } catch (IOException | URISyntaxException e) {
                             throw new RuntimeException(e);
