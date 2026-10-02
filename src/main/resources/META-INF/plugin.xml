@@ -14,16 +14,44 @@
         Simple HTML elements (text formatting, paragraphs, and lists) can be added inside of <![CDATA[ ]]> tag.
         Guidelines: https://plugins.jetbrains.com/docs/marketplace/plugin-overview-page.html#plugin-description -->
     <description><![CDATA[
-    Manage (for now view) your gists from inside IntelliJ IDE.
+<p>View and edit your GitHub gists from inside the IDE.</p>
 
-    Uses the GitHub account you have already configured in the IDE under
-    Settings | Version Control | GitHub. If no account is configured, the IDE's own GitHub login
-    dialog (browser sign-in or personal access token) is shown, and the token is stored securely in
-    the IDE password safe. If the bundled GitHub plugin is disabled, the plugin falls back to
-    asking for a personal access token for the current session.
+<h3>Browsing</h3>
+<ul>
+    <li>Gists are grouped by category. Trailing words starting with # in a gist description, like
+        'Gist description #category1 #category2', are treated as categories.</li>
+    <li>Click a gist file to open it with syntax coloring based on its extension. Files of a gist
+        already open are reused instead of opening another tab.</li>
+    <li>Double-click a gist to open all its files. All files of a gist open in a single editor group,
+        a new one to the right if none of its files are open yet.</li>
+    <li>Load the public gists of any GitHub user.</li>
+</ul>
 
-    It treats any trailing words starting with # in Gist descriptions like
-    'Gist description #category1 #category2' as categories and groups Gists by them.
+<h3>Speed search</h3>
+<ul>
+    <li>Press Cmd+F (Ctrl+F) or just start typing in the tree. Matches are highlighted and collapsed
+        nodes are expanded.</li>
+    <li>Use Up and Down arrow keys for the previous and next match, Escape to close the search. A hint
+        is shown below the tree while searching.</li>
+</ul>
+
+<h3>Editing your own gists</h3>
+<ul>
+    <li>Files of your own gists open editable. Gists of other users open read-only.</li>
+    <li>Edited files show * in the tab and a banner with Save to Gist, Show Diff and Revert.</li>
+    <li>Changes are saved to GitHub only with Save to Gist, from the banner or the editor and editor tab
+        context menus. A notification confirms the save, with a link to open the gist on GitHub.</li>
+    <li>If the file was changed on GitHub since you opened it, you are warned and can show a diff
+        before deciding to overwrite.</li>
+    <li>Closing a tab with unsaved changes keeps them and offers to save, reopen or discard.</li>
+</ul>
+
+<h3>GitHub account</h3>
+<p>Uses the GitHub account you have already configured in the IDE under
+Settings | Version Control | GitHub. If no account is configured, the IDE's own GitHub login
+dialog (browser sign-in or personal access token) is shown, and the token is stored securely in
+the IDE password safe. If the bundled GitHub plugin is disabled, the plugin falls back to
+asking for a personal access token for the current session.</p>
 ]]></description>
 
     <!-- Product and plugin compatibility requirements.
@@ -42,6 +70,14 @@
     <change-notes><![CDATA[
 <h2>New Features</h2>
 <ul>
+    <li>Edit files of your own gists and save them back to GitHub with Save to Gist.</li>
+    <li>Warn when saving a file that was changed on GitHub since it was opened, with Show Diff.</li>
+    <li>Unsaved changes are marked with * in the tab and a banner with Save to Gist, Show Diff and Revert.</li>
+    <li>Save notification with time of save and link to open the gist on GitHub.</li>
+    <li>Closing a tab with unsaved changes keeps them and offers Save to Gist, Reopen or Discard.</li>
+    <li>Double-click a gist to open all its files in a single editor group.</li>
+    <li>Clicking a gist file that is already open selects its tab instead of opening another one.</li>
+    <li>Speed search hint below the tree while searching.</li>
     <li>Load public gists of any GitHub user.</li>
     <li>Speed search. Just start typing search string. Use up and down arrow keys to go to previous and next match. ESCAPE to cancel search.</li>
     <li>Moved actions to Toolwindow title bar.</li>
@@ -55,6 +91,9 @@
 </ul>
 <h2>Bug Fixes</h2>
 <ul>
+    <li>Speed search no longer closes after the first match on a gist file.</li>
+    <li>Double-clicking a gist no longer expands or collapses it.</li>
+    <li>Replace API scheduled for removal (SimpleListCellRenderer.create).</li>
     <li>Fix icon size.</li>
     <li>Fix tree cell background.</li>
     <li>Use icons</li>
@@ -71,6 +110,8 @@
                 icon="AllIcons.Vcs.Vendors.Github"
                 secondary="true"
         />
+        <editorTabTitleProvider implementation="sandipchitale.gistdoit.GistEditorTabTitleProvider"/>
+        <editorNotificationProvider implementation="sandipchitale.gistdoit.GistEditorNotificationProvider"/>
         <notificationGroup
                 id="gistDoItNotificationGroup"
                 toolWindowId="Gist Do It"
@@ -90,8 +131,16 @@
         </action>
         <action id="RefreshGists"
                 class="sandipchitale.gistdoit.RefreshGistsAction"
-                description="Disconnect from Github"
+                description="Refresh gists"
                 icon="AllIcons.Actions.Refresh">
+        </action>
+        <action id="SaveToGist"
+                class="sandipchitale.gistdoit.SaveToGistAction"
+                text="Save to Gist"
+                description="Save this file back to its gist on GitHub"
+                icon="AllIcons.Actions.MenuSaveall">
+            <add-to-group group-id="EditorPopupMenu" anchor="first"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="first"/>
         </action>
         <action id="DisconnectFromGithub"
                 class="sandipchitale.gistdoit.DisconnectFromGithubAction"

@@ -1,13 +1,22 @@
 package sandipchitale.gistdoit;
 
+import com.intellij.diff.DiffContentFactory;
+import com.intellij.diff.DiffDialogHints;
+import com.intellij.diff.DiffManager;
+import com.intellij.diff.requests.SimpleDiffRequest;
 import com.intellij.icons.AllIcons;
+import com.intellij.ide.BrowserUtil;
 import com.intellij.lang.Language;
 import com.intellij.lang.LanguageUtil;
 import com.intellij.notification.Notification;
+import com.intellij.notification.NotificationAction;
 import com.intellij.notification.NotificationType;
 import com.intellij.openapi.actionSystem.ActionManager;
 import com.intellij.openapi.application.ApplicationManager;
 import com.intellij.openapi.fileEditor.FileEditorManager;
+import com.intellij.openapi.fileEditor.ex.FileEditorManagerEx;
+import com.intellij.openapi.fileEditor.impl.EditorWindow;
+import com.intellij.openapi.fileEditor.impl.FileEditorOpenOptions;
 import com.intellij.openapi.fileTypes.FileType;
 import com.intellij.openapi.fileTypes.FileTypeManager;
 import com.intellij.openapi.fileTypes.PlainTextFileType;
@@ -16,11 +25,16 @@ import com.intellij.openapi.progress.ProgressIndicator;
 import com.intellij.openapi.progress.Task;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.ui.SimpleToolWindowPanel;
+import com.intellij.openapi.ui.Messages;
+import com.intellij.openapi.util.Key;
 import com.intellij.openapi.util.Ref;
+import com.intellij.openapi.util.text.StringUtil;
 import com.intellij.openapi.wm.ToolWindowManager;
 import com.intellij.openapi.wm.ex.ToolWindowEx;
+import com.intellij.openapi.vfs.VirtualFile;
 import com.intellij.testFramework.LightVirtualFile;
 import com.intellij.ui.ColoredTreeCellRenderer;
+import com.intellij.ui.DoubleClickListener;
 import com.intellij.ui.ScrollPaneFactory;
 import com.intellij.ui.TreeUIHelper;
 import com.intellij.ui.components.JBLabel;
@@ -38,26 +52,42 @@ import javax.swing.tree.DefaultTreeModel;
 import javax.swing.tree.DefaultTreeSelectionModel;
 import javax.swing.tree.TreePath;
 import java.awt.*;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 
 import static javax.swing.JOptionPane.DEFAULT_OPTION;
 import static javax.swing.JOptionPane.QUESTION_MESSAGE;
 
 public class GistDoItToolWindow extends SimpleToolWindowPanel {
-    private static final String NOTIFICATION_GROUP = "gistDoItNotificationGroup";
+    static final String NOTIFICATION_GROUP = "gistDoItNotificationGroup";
     private static final String GITHUB_COM_API_URL = "https://api.github.com";
 
     private static GitHub github;
     private static GHUser githubUser;
+    // The authenticated user. githubUser changes when viewing another user's gists, this does not.
+    private static GHUser myself;
+
+    // Set on opened files of the user's own gists, which makes them editable and savable back to GitHub
+    static final Key<GHGist> GIST_KEY = Key.create("sandipchitale.gistdoit.gist");
+    // Content the edit is based on, used to detect changes made on GitHub in the meantime
+    static final Key<String> BASE_CONTENT_KEY = Key.create("sandipchitale.gistdoit.baseContent");
+    // Gist an opened file belongs to, used to keep all files of a gist in one editor group
+    private static final Key<String> GIST_ID_KEY = Key.create("sandipchitale.gistdoit.gistId");
 
     private final GistsTreeModel gistsTreeModel;
     private final Project project;
     private final Tree gistsTree;
+    // Opened gist files by gistId/fileName, so clicking an open file selects its tab instead of opening another
+    private final Map<String, LightVirtualFile> openedFiles = new java.util.concurrent.ConcurrentHashMap<>();
 
     private class GistTreeCellRenderer extends ColoredTreeCellRenderer {
         @Override
@@ -231,6 +261,11 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
         DisconnectFromGithubAction disconnectFromGithubAction = (DisconnectFromGithubAction) actionManager.getAction("DisconnectFromGithub");
         disconnectFromGithubAction.setGistDoItToolWindow(this);
 
+        SaveToGistAction saveToGistAction = (SaveToGistAction) actionManager.getAction("SaveToGist");
+        saveToGistAction.setGistDoItToolWindow(this);
+
+        GistEditTracker.getInstance(project).setGistDoItToolWindow(this);
+
         Objects.requireNonNull(gistDoItToolWindowEx).setTitleActions(java.util.List.of(connectToGithubAction, gistsOfUser, refreshGistsAction, disconnectFromGithubAction));
 
         gistsTree.setCellRenderer(new GistTreeCellRenderer());
@@ -244,45 +279,242 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
             if (lastPathComponent instanceof DefaultMutableTreeNode defaultMutableTreeNode) {
                 Object userObject = defaultMutableTreeNode.getUserObject();
                 if (userObject instanceof GHGistFile gistFile) {
-                    String gistFileName = gistFile.getFileName();
-                    String gistFileRawUrl = gistFile.getRawUrl();
-                    ApplicationManager.getApplication().executeOnPooledThread(() -> {
-                        gistsTree.setPaintBusy(true);
-                        try {
-                            String content = IOUtils.toString(new URI(gistFileRawUrl).toURL(), StandardCharsets.UTF_8);
-                            ApplicationManager.getApplication().invokeLater(() -> {
-                                FileType fileType = null;
-                                if (gistFileName.contains(".")) {
-                                    String extension = gistFileName.substring(gistFileName.lastIndexOf(".") + 1);
-                                    fileType = FileTypeManager.getInstance().getFileTypeByExtension(extension);
-                                }
-                                if (fileType == null) {
-                                    fileType = PlainTextFileType.INSTANCE;
-                                }
-                                LightVirtualFile lightVirtualFile = new LightVirtualFile(gistFileName, fileType, content);
-                                lightVirtualFile.setWritable(false);
-                                // Figure out a way to set language for syntax highlighting based on file extension
-                                // Set language for syntax highlighting based on file type
-                                Language language = LanguageUtil.getFileLanguage(lightVirtualFile);
-                                lightVirtualFile.setLanguage(Objects.requireNonNullElse(language, PlainTextLanguage.INSTANCE));
-                                // Don't steal focus while speed searching, so the popup stays open for next/previous match
-                                SpeedSearchSupply speedSearch = SpeedSearchSupply.getSupply(gistsTree);
-                                boolean focusEditor = speedSearch == null || !speedSearch.isPopupActive();
-                                FileEditorManager.getInstance(project).openFile(lightVirtualFile, focusEditor);
-                            });
-                        } catch (IOException | URISyntaxException e) {
-                            throw new RuntimeException(e);
-                        } finally {
-                            gistsTree.setPaintBusy(false);
-                        }
-                    });
+                    // Don't steal focus while speed searching, so the popup stays open for next/previous match
+                    SpeedSearchSupply speedSearch = SpeedSearchSupply.getSupply(gistsTree);
+                    boolean focusEditor = speedSearch == null || !speedSearch.isPopupActive();
+                    if (defaultMutableTreeNode.getParent() instanceof DefaultMutableTreeNode gistNode
+                            && gistNode.getUserObject() instanceof GHGist gist) {
+                        openGistFiles(gist, List.of(gistFile), focusEditor, false);
+                    }
                 }
             }
         });
 
+        // Double-clicking a gist opens all of its files without expanding or collapsing it.
+        // Double-click toggling is turned off and done here for the other nodes instead.
+        gistsTree.setToggleClickCount(0);
+        new DoubleClickListener() {
+            @Override
+            protected boolean onDoubleClick(@NotNull MouseEvent event) {
+                TreePath path = gistsTree.getPathForLocation(event.getX(), event.getY());
+                if (path == null || !(path.getLastPathComponent() instanceof DefaultMutableTreeNode node)) {
+                    return false;
+                }
+                if (node.getUserObject() instanceof GHGist gist) {
+                    openGistFiles(gist, new ArrayList<>(gist.getFiles().values()), true, true);
+                    return true;
+                }
+                if (!node.isLeaf()) {
+                    if (gistsTree.isExpanded(path)) {
+                        gistsTree.collapsePath(path);
+                    } else {
+                        gistsTree.expandPath(path);
+                    }
+                    return true;
+                }
+                return false;
+            }
+        }.installOn(gistsTree);
+
         // Connect using the GitHub account already configured in the IDE, if there is one. Never
         // pops a login dialog on its own - use the Connect to Github action for that.
         connect(true);
+    }
+
+    private void openGistFiles(GHGist gist, List<GHGistFile> gistFiles, boolean focusEditor, boolean newEditorGroup) {
+        ApplicationManager.getApplication().executeOnPooledThread(() -> {
+            boolean ownGist = isOwnGist(gist);
+            gistsTree.setPaintBusy(true);
+            try {
+                // Fetch all contents first so files open in gist order
+                List<LightVirtualFile> lightVirtualFiles = new ArrayList<>();
+                for (GHGistFile gistFile : gistFiles) {
+                    String gistFileName = gistFile.getFileName();
+                    // Reuse the file if it is open or has unsaved edits, so edits are not split across tabs or lost
+                    String openedFileKey = gist.getGistId() + "/" + gistFileName;
+                    LightVirtualFile openedFile = openedFiles.get(openedFileKey);
+                    if (openedFile != null && (FileEditorManager.getInstance(project).isFileOpen(openedFile) || GistEditTracker.isModified(openedFile))) {
+                        lightVirtualFiles.add(openedFile);
+                        continue;
+                    }
+                    String content = StringUtil.convertLineSeparators(
+                            IOUtils.toString(new URI(gistFile.getRawUrl()).toURL(), StandardCharsets.UTF_8));
+                    FileType fileType = null;
+                    if (gistFileName.contains(".")) {
+                        String extension = gistFileName.substring(gistFileName.lastIndexOf(".") + 1);
+                        fileType = FileTypeManager.getInstance().getFileTypeByExtension(extension);
+                    }
+                    if (fileType == null) {
+                        fileType = PlainTextFileType.INSTANCE;
+                    }
+                    LightVirtualFile lightVirtualFile = new LightVirtualFile(gistFileName, fileType, content);
+                    // Only the user's own gists can be edited and saved back
+                    lightVirtualFile.setWritable(ownGist);
+                    lightVirtualFile.putUserData(GIST_ID_KEY, gist.getGistId());
+                    if (ownGist) {
+                        lightVirtualFile.putUserData(GIST_KEY, gist);
+                        lightVirtualFile.putUserData(BASE_CONTENT_KEY, content);
+                    }
+                    // Set language for syntax highlighting based on file type
+                    Language language = LanguageUtil.getFileLanguage(lightVirtualFile);
+                    lightVirtualFile.setLanguage(Objects.requireNonNullElse(language, PlainTextLanguage.INSTANCE));
+                    openedFiles.put(openedFileKey, lightVirtualFile);
+                    lightVirtualFiles.add(lightVirtualFile);
+                }
+                ApplicationManager.getApplication().invokeLater(() -> {
+                    FileEditorManagerEx fileEditorManagerEx = FileEditorManagerEx.getInstanceEx(project);
+                    EditorWindow currentWindow = fileEditorManagerEx.getCurrentWindow();
+                    // All files of a gist go into one editor group: the one already showing a file of this gist, if any
+                    EditorWindow targetWindow = findEditorWindowOfGist(fileEditorManagerEx, gist.getGistId());
+                    for (LightVirtualFile lightVirtualFile : lightVirtualFiles) {
+                        if (targetWindow != null) {
+                            fileEditorManagerEx.openFile(lightVirtualFile, targetWindow,
+                                    new FileEditorOpenOptions().withRequestFocus(focusEditor).withReuseOpen(false));
+                        } else if (newEditorGroup && currentWindow != null && currentWindow.getTabCount() > 0) {
+                            // Split to the right, opening the first file in the new editor group
+                            targetWindow = currentWindow.split(SwingConstants.VERTICAL, true, lightVirtualFile, focusEditor);
+                        } else {
+                            FileEditorManager.getInstance(project).openFile(lightVirtualFile, focusEditor);
+                            // Remaining files follow the first into the same group
+                            targetWindow = findEditorWindowOfGist(fileEditorManagerEx, gist.getGistId());
+                        }
+                    }
+                });
+            } catch (IOException | URISyntaxException e) {
+                throw new RuntimeException(e);
+            } finally {
+                gistsTree.setPaintBusy(false);
+            }
+        });
+    }
+
+    private static EditorWindow findEditorWindowOfGist(FileEditorManagerEx fileEditorManagerEx, String gistId) {
+        EditorWindow currentWindow = fileEditorManagerEx.getCurrentWindow();
+        // Prefer the current group if it already holds a file of this gist
+        if (currentWindow != null && containsFileOfGist(currentWindow, gistId)) {
+            return currentWindow;
+        }
+        for (EditorWindow window : fileEditorManagerEx.getWindows()) {
+            if (containsFileOfGist(window, gistId)) {
+                return window;
+            }
+        }
+        return null;
+    }
+
+    private static boolean containsFileOfGist(EditorWindow window, String gistId) {
+        for (VirtualFile file : window.getFileList()) {
+            if (gistId.equals(file.getUserData(GIST_ID_KEY))) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    static boolean isOwnGist(GHGist gist) {
+        if (myself == null) {
+            return false;
+        }
+        try {
+            GHUser owner = gist.getOwner();
+            return owner != null && myself.getLogin().equals(owner.getLogin());
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    void saveToGist(@NotNull LightVirtualFile file, @NotNull String content) {
+        GHGist gist = file.getUserData(GIST_KEY);
+        if (gist == null || !isOwnGist(gist)) {
+            return;
+        }
+        String fileName = file.getName();
+        new Task.Backgroundable(project, "Saving " + fileName + " to gist", true) {
+            @Override
+            public void run(@NotNull ProgressIndicator indicator) {
+                try {
+                    // Warn if the file changed on GitHub since it was opened or last saved from here
+                    Conflict conflict = findConflict(gist, fileName, file.getUserData(BASE_CONTENT_KEY));
+                    if (conflict != null) {
+                        Ref<Boolean> overwrite = Ref.create(false);
+                        ApplicationManager.getApplication().invokeAndWait(() -> overwrite.set(confirmOverwrite(file, content, conflict)));
+                        if (!overwrite.get()) {
+                            return;
+                        }
+                    }
+                    GHGist updatedGist = gist.update().updateFile(fileName, content).update();
+                    // Later saves must build on the updated gist
+                    file.putUserData(GIST_KEY, updatedGist);
+                    file.putUserData(BASE_CONTENT_KEY, StringUtil.convertLineSeparators(content));
+                    // Clear the unsaved marker and banner
+                    ApplicationManager.getApplication().invokeLater(() -> GistEditTracker.getInstance(project).refresh(file));
+                    String savedAt = LocalTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
+                    URL htmlUrl = updatedGist.getHtmlUrl();
+                    Notification savedNotification = new Notification(NOTIFICATION_GROUP,
+                            "Saved to gist",
+                            "Saved " + fileName + " to gist '" + StringUtil.notNullize(updatedGist.getDescription()) + "' at " + savedAt + ".",
+                            NotificationType.INFORMATION);
+                    if (htmlUrl != null) {
+                        savedNotification.addAction(NotificationAction.createSimpleExpiring("Open on GitHub",
+                                () -> BrowserUtil.browse(htmlUrl.toString())));
+                    }
+                    savedNotification.notify(project);
+                    // Refresh tree so raw URLs point to the new revision
+                    ApplicationManager.getApplication().invokeLater(GistDoItToolWindow.this::loadGists);
+                } catch (IOException | URISyntaxException e) {
+                    new Notification(NOTIFICATION_GROUP,
+                            "Could not save to gist",
+                            "Could not save " + fileName + " to gist: " + e.getMessage(),
+                            NotificationType.ERROR).notify(project);
+                }
+            }
+        }.queue();
+    }
+
+    private record Conflict(String message, String latestContent) {}
+
+    /**
+     * Asks whether to overwrite the changed gist file, offering a diff of GitHub's version against the user's.
+     */
+    private boolean confirmOverwrite(LightVirtualFile file, String content, Conflict conflict) {
+        while (true) {
+            int choice = Messages.showDialog(project,
+                    conflict.message() + "\n\nOverwrite it with your version?",
+                    "Gist Changed on GitHub",
+                    new String[]{"Overwrite", "Show Diff", "Cancel"},
+                    1,
+                    Messages.getWarningIcon());
+            if (choice != 1) {
+                return choice == 0;
+            }
+            DiffContentFactory diffContentFactory = DiffContentFactory.getInstance();
+            SimpleDiffRequest diffRequest = new SimpleDiffRequest(file.getName() + ": GitHub vs. Yours",
+                    diffContentFactory.create(project, conflict.latestContent(), file.getFileType()),
+                    diffContentFactory.create(project, content, file.getFileType()),
+                    "On GitHub",
+                    "Yours");
+            // Modal, so the choice is offered again once the diff is closed
+            DiffManager.getInstance().showDiff(project, diffRequest, DiffDialogHints.MODAL);
+        }
+    }
+
+    /**
+     * @return the conflict, or null if the file on GitHub still matches what the edit was based on
+     */
+    private static Conflict findConflict(GHGist gist, String fileName, String baseContent) throws IOException, URISyntaxException {
+        GHGist latestGist = github.getGist(gist.getGistId());
+        GHGistFile latestFile = latestGist.getFile(fileName);
+        if (latestFile == null) {
+            return new Conflict(fileName + " was deleted from the gist on GitHub since you opened it.", "");
+        }
+        String latestContent = latestFile.isTruncated() || latestFile.getContent() == null
+                ? IOUtils.toString(new URI(latestFile.getRawUrl()).toURL(), StandardCharsets.UTF_8)
+                : latestFile.getContent();
+        latestContent = StringUtil.convertLineSeparators(latestContent);
+        if (baseContent != null && !baseContent.equals(latestContent)) {
+            return new Conflict(fileName + " was changed on GitHub since you opened it.", latestContent);
+        }
+        return null;
     }
 
     boolean isConnected() {
@@ -379,6 +611,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
             GHUser me = candidate.getMyself();
             github = candidate;
             githubUser = me;
+            myself = me;
             return true;
         } catch (IOException e) {
             new Notification(NOTIFICATION_GROUP,
@@ -472,6 +705,7 @@ public class GistDoItToolWindow extends SimpleToolWindowPanel {
     void disconnectFromGithub() {
         github = null;
         githubUser = null;
+        myself = null;
         gistsTreeModel.setGists(Collections.emptySet());
     }
 }
